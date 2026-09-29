@@ -1,0 +1,30 @@
+# BlackJackML dependencies (Python 3.12)
+#
+# Install into the project venv:
+#   venv\Scripts\python -m pip install -r requirements.txt
+
+# PyTorch with CUDA 12.8 (GTX 1650 Ti). For CPU-only, drop the index line
+# and the "+cu128" suffixes.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+
+# Vision / imaging
+numpy==2.3.5
+opencv-python==4.10.0.84
+pillow==12.3.0
+
+# Screen capture + YOLO tracking (main.py)
+mss==10.2.0
+dxcam==0.3.0  # fast Windows screen capture (~1.6 ms vs ~21 ms for mss); main.py falls back to mss
+ultralytics==8.4.160
+lap==0.5.13  # needed by model.track(); ultralytics otherwise auto-installs it at runtime
+
+# TensorRT engine export (utilities/export_tensorrt.py) and running the .engine in main.py
+tensorrt-cu12==11.3.0.99
+onnx==1.21.0
+onnxslim==0.1.97
+
+# TrOCR experiments (experimentations/)
+transformers==4.39.3
+tokenizers==0.15.2

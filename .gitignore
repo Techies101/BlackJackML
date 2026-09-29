@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Model exports: large and specific to the GPU / TensorRT version they were built on.
+# Rebuild with: venv\Scripts\python utilities\export_tensorrt.py [fp32|fp16]
+*.engine
+*.engine.previous
+*.engine.bak
+*.onnx
+
+# New captures from main.py: unverified, per-session data. Only the empty folder is kept.
+captured_cards/*
+!captured_cards/.gitkeep
+
+# Generated debug output from the experiment scripts
+rank_verifier_results/
+trocr_rank_results/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

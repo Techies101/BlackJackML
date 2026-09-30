@@ -14,7 +14,10 @@ numpy==2.3.5
 opencv-python==4.10.0.84
 pillow==12.3.0
 
-# Screen capture + YOLO tracking (main.py)
+# Desktop UI (main.py)
+PySide6==6.11.2
+
+# Screen capture + YOLO tracking (core/pipeline.py)
 mss==10.2.0
 dxcam==0.3.0  # fast Windows screen capture (~1.6 ms vs ~21 ms for mss); main.py falls back to mss
 ultralytics==8.4.160

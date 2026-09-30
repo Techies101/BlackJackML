@@ -1,0 +1,41 @@
+{
+  "source": "BJA_S17.pdf (Blackjack Apprenticeship S17 deviation chart), Hi-Lo true count",
+  "rules": "8 decks, S17, DAS, late surrender",
+  "conditions": {
+    "tc>=": "deviate at this true count and above (chart: '+' after the index)",
+    "tc<=": "deviate at this true count and below (chart: '-' after the index)",
+    "rc>0": "deviate at any positive running count (chart: '0+')",
+    "rc<0": "deviate at any negative running count (chart: '0-')"
+  },
+  "insurance": {"condition": "tc>=", "index": 3, "action": "take"},
+  "plays": [
+    {"table": "pair", "row": "T,T", "dealer": "4", "condition": "tc>=", "index": 6, "action": "Y"},
+    {"table": "pair", "row": "T,T", "dealer": "5", "condition": "tc>=", "index": 5, "action": "Y"},
+    {"table": "pair", "row": "T,T", "dealer": "6", "condition": "tc>=", "index": 4, "action": "Y"},
+
+    {"table": "soft", "row": "A,8", "dealer": "4", "condition": "tc>=", "index": 3, "action": "Ds"},
+    {"table": "soft", "row": "A,8", "dealer": "5", "condition": "tc>=", "index": 1, "action": "Ds"},
+    {"table": "soft", "row": "A,8", "dealer": "6", "condition": "tc>=", "index": 1, "action": "Ds"},
+    {"table": "soft", "row": "A,6", "dealer": "2", "condition": "tc>=", "index": 1, "action": "D"},
+
+    {"table": "hard", "row": "16", "dealer": "9", "condition": "tc>=", "index": 4, "action": "S"},
+    {"table": "hard", "row": "16", "dealer": "10", "condition": "rc>0", "index": 0, "action": "S"},
+    {"table": "hard", "row": "15", "dealer": "10", "condition": "tc>=", "index": 4, "action": "S"},
+    {"table": "hard", "row": "13", "dealer": "2", "condition": "tc<=", "index": -1, "action": "H"},
+    {"table": "hard", "row": "12", "dealer": "2", "condition": "tc>=", "index": 3, "action": "S"},
+    {"table": "hard", "row": "12", "dealer": "3", "condition": "tc>=", "index": 2, "action": "S"},
+    {"table": "hard", "row": "12", "dealer": "4", "condition": "rc<0", "index": 0, "action": "H"},
+    {"table": "hard", "row": "11", "dealer": "A", "condition": "tc>=", "index": 1, "action": "D"},
+    {"table": "hard", "row": "10", "dealer": "10", "condition": "tc>=", "index": 4, "action": "D"},
+    {"table": "hard", "row": "10", "dealer": "A", "condition": "tc>=", "index": 4, "action": "D"},
+    {"table": "hard", "row": "9", "dealer": "2", "condition": "tc>=", "index": 1, "action": "D"},
+    {"table": "hard", "row": "9", "dealer": "7", "condition": "tc>=", "index": 3, "action": "D"},
+    {"table": "hard", "row": "8", "dealer": "6", "condition": "tc>=", "index": 2, "action": "D"},
+
+    {"table": "surrender", "row": "16", "dealer": "8", "condition": "tc>=", "index": 4, "action": "SUR"},
+    {"table": "surrender", "row": "16", "dealer": "9", "condition": "tc<=", "index": -1, "action": "-"},
+    {"table": "surrender", "row": "15", "dealer": "9", "condition": "tc>=", "index": 2, "action": "SUR"},
+    {"table": "surrender", "row": "15", "dealer": "10", "condition": "rc<0", "index": 0, "action": "-"},
+    {"table": "surrender", "row": "15", "dealer": "A", "condition": "tc>=", "index": 2, "action": "SUR"}
+  ]
+}

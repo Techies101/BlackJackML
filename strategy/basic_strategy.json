@@ -1,0 +1,59 @@
+{
+  "source": "BJA_Basic_Strategy.jpg (Blackjack Apprenticeship), with the S17 base plays from BJA_S17.pdf for A,8 vs 6 (S) and 11 vs A (H)",
+  "rules": "8 decks, S17, DAS, late surrender",
+  "dealer_columns": ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"],
+  "codes": {
+    "Y": "Split the pair",
+    "Y/N": "Split if Double After Split is offered, otherwise don't split",
+    "N": "Don't split the pair",
+    "H": "Hit",
+    "S": "Stand",
+    "D": "Double if allowed, otherwise hit",
+    "Ds": "Double if allowed, otherwise stand",
+    "SUR": "Surrender",
+    "-": "No surrender"
+  },
+  "tables": {
+    "pair": {
+      "A,A": ["Y", "Y", "Y", "Y", "Y", "Y", "Y", "Y", "Y", "Y"],
+      "T,T": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"],
+      "9,9": ["Y", "Y", "Y", "Y", "Y", "N", "Y", "Y", "N", "N"],
+      "8,8": ["Y", "Y", "Y", "Y", "Y", "Y", "Y", "Y", "Y", "Y"],
+      "7,7": ["Y", "Y", "Y", "Y", "Y", "Y", "N", "N", "N", "N"],
+      "6,6": ["Y/N", "Y", "Y", "Y", "Y", "N", "N", "N", "N", "N"],
+      "5,5": ["N", "N", "N", "N", "N", "N", "N", "N", "N", "N"],
+      "4,4": ["N", "N", "N", "Y/N", "Y/N", "N", "N", "N", "N", "N"],
+      "3,3": ["Y/N", "Y/N", "Y", "Y", "Y", "Y", "N", "N", "N", "N"],
+      "2,2": ["Y/N", "Y/N", "Y", "Y", "Y", "Y", "N", "N", "N", "N"]
+    },
+    "soft": {
+      "A,9": ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"],
+      "A,8": ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"],
+      "A,7": ["Ds", "Ds", "Ds", "Ds", "Ds", "S", "S", "H", "H", "H"],
+      "A,6": ["H", "D", "D", "D", "D", "H", "H", "H", "H", "H"],
+      "A,5": ["H", "H", "D", "D", "D", "H", "H", "H", "H", "H"],
+      "A,4": ["H", "H", "D", "D", "D", "H", "H", "H", "H", "H"],
+      "A,3": ["H", "H", "H", "D", "D", "H", "H", "H", "H", "H"],
+      "A,2": ["H", "H", "H", "D", "D", "H", "H", "H", "H", "H"]
+    },
+    "hard": {
+      "17": ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"],
+      "16": ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"],
+      "15": ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"],
+      "14": ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"],
+      "13": ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"],
+      "12": ["H", "H", "S", "S", "S", "H", "H", "H", "H", "H"],
+      "11": ["D", "D", "D", "D", "D", "D", "D", "D", "D", "H"],
+      "10": ["D", "D", "D", "D", "D", "D", "D", "D", "H", "H"],
+      "9": ["H", "D", "D", "D", "D", "H", "H", "H", "H", "H"],
+      "8": ["H", "H", "H", "H", "H", "H", "H", "H", "H", "H"]
+    },
+    "surrender": {
+      "17": ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-"],
+      "16": ["-", "-", "-", "-", "-", "-", "-", "SUR", "SUR", "SUR"],
+      "15": ["-", "-", "-", "-", "-", "-", "-", "-", "SUR", "-"],
+      "14": ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]
+    }
+  },
+  "insurance": "never"
+}

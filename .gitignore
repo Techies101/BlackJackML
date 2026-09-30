@@ -15,6 +15,9 @@ venv/
 captured_cards/*
 !captured_cards/.gitkeep
 
+# Personal settings saved by the app (shoe setup, bet calculator, window positions)
+settings.json
+
 # Generated debug output from the experiment scripts
 rank_verifier_results/
 trocr_rank_results/
@@ -24,3 +27,12 @@ trocr_rank_results/
 .idea/
 Thumbs.db
 desktop.ini
+
+# Reference and design material kept local (not in the repo)
+BJA_Basic_Strategy.jpg
+BJA_S17.pdf
+Betting Spread Reference/
+BlackJackML screen designs/
+BlackJackML screen designs.zip
+BlackJackML Screens.html
+Sample Expected User Screen.png

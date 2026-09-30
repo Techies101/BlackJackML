@@ -4,43 +4,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A live Hi-Lo card counter for an online blackjack table. `main.py` captures a fixed 640×640 screen region, detects and tracks cards with a YOLO model, cross-checks each card's rank with a template-matching verifier, and updates the running count. Windows-only, runs on the NVIDIA GPU (GTX 1650 Ti, Intel + NVIDIA laptop). Not a git repository.
+A live Hi-Lo card counter for an online blackjack table, with a PySide6 desktop UI. It captures a fixed 640×640 screen region, detects and tracks cards with a YOLO model, cross-checks each card's rank with a template-matching verifier, keeps the running/true count, and gives basic-strategy / deviation advice and a recommended bet. Windows-only, NVIDIA GPU (GTX 1650 Ti on an Intel + NVIDIA laptop). Private GitHub repo `Techies101/BlackJackML`.
 
 ## Environment and commands
 
 Always use the project venv (VS Code is configured against it; the global Python has different packages):
 
 ```
-venv\Scripts\python -m pip install -r requirements.txt   # install
-venv\Scripts\python main.py                              # run the live counter (needs the game on screen)
+venv\Scripts\python -m pip install -r requirements.txt       # install
+venv\Scripts\python main.py                                  # run the app (needs the game on screen)
 venv\Scripts\python experimentations\test_rank_verifier.py   # offline accuracy test of the verifier
 venv\Scripts\python utilities\export_tensorrt.py [fp32|fp16] # rebuild + validate a TensorRT engine
 ```
 
-There is no test framework, linter or build step. `test_rank_verifier.py` is the main regression check: it scores the verifier leave-one-card-out (honest) and cross-corner (optimistic) on `card_templates/`, and writes per-step debug images to `rank_verifier_results/`. `test_trocr*.py` are abandoned TrOCR experiments.
+There is no test framework, linter or build step. `test_rank_verifier.py` is the main regression check for rank reading: it scores the verifier leave-one-card-out (honest) and cross-corner (optimistic) on `card_templates/`, and writes per-step debug images to `rank_verifier_results/`. `test_trocr*.py` are abandoned TrOCR experiments.
 
 ## Architecture
 
-**Per-frame pipeline (`main.py`, a top-level script, no `main()`):**
-1. Capture via `dxcam` (background thread, ~1.6 ms), falling back to `mss`. `crop_monitor` fixes the region.
-2. Apply `utilities/mask1.png`: YOLO only sees a small window (x 228–352, y 537–626), almost identical to the counting zone (`zone_x1..zone_y2`).
-3. `model.track(...)` (ByteTrack). A card counts once its box **centre** is in the zone for `REQUIRED_STABLE_FRAMES` frames; up to `MISS_TOLERANCE` missed frames are tolerated.
-4. On count: crop from `clean_frame` (copy taken before any drawing), 2.5× upscale + Otsu → `verifier.read()`; YOLO vs verifier decided by `YOLO_TRUST_CONF` / `VERIFIER_STRONG_*`; crop saved to `captured_cards/`.
-5. **Reused tracker IDs:** a new card landing on the same spot often inherits an already-counted ID. `main.py` stores the counted card's rank-glyph signature and re-counts the ID when both the YOLO class and the glyph change for `NEW_CARD_FRAMES` frames.
-
-**`utilities/rank_verifier.py`** (shared by `main.py` and the test script, classic CV, not a neural net): find card contour → perspective-warp to a 280×200 **landscape** card (the game shows cards landscape; a 180° flip is harmless) → crop the rank from both corners (bottom-right rotated upright, which avoids 6/9 confusion) → 40×48 glyph → normalised cross-correlation against templates. `MIN_SCORE`/`MIN_MARGIN` gate confidence; measured on labelled cards, same-rank glyphs score ≥ 0.87 and different ranks ≤ 0.63.
+- **Hide feed** (tab bar) shrinks the Main tab to a compact 446 px window (controls move under the left panel) and sets `CaptureWorker.show_feed = False`, so frames are neither drawn nor sent to the UI; counting continues.
+- `main.py` starts dxcam, then builds the Qt app: `ui/main_window.py` (always-on-top, frameless, 1120×796; tabs Main · Basic Strategy · Deviations · Bet Spread) and `ui/logs_window.py` (Program Logs). The UI follows the Claude Design mockups in `BlackJackML screen designs/` (dark + neon; tokens and fonts in `ui/theme.py`, fonts bundled in `ui/fonts/`).
+- `core/pipeline.py` `CaptureWorker` (QThread) loads the model, then while capture is on: grab frame → black out everything except the counting zone plus a small margin (`zone_mask()`, identical to the old `utilities/mask1.png` for the default zone) → `model.track` (ByteTrack) → count cards whose box **centre** stays in the zone for `REQUIRED_STABLE_FRAMES` (tolerating `MISS_TOLERANCE` missed frames) → verifier second opinion (`decide_rank`: the verifier wins when YOLO conf < `YOLO_TRUST_CONF`, when it is "strong", or — safety net — whenever it is confident and its Hi-Lo group differs from YOLO's) → `ShoeCounter.add_card`. It emits annotated frames (`frame_ready`) and logs through `core/logbus.py`. Crops come from `clean_frame`, copied before any drawing.
+- **Reused tracker IDs:** a new card landing on the same spot often inherits an already-counted ID. The pipeline stores each counted card's rank-glyph signature and re-counts the ID when both the YOLO class and the glyph change for `NEW_CARD_FRAMES` frames.
+- `core/counter.py` `ShoeCounter`: running count, cards dealt, burned cards, history (undo, ±1 corrections, burns, new shoe); shared by the capture thread and the UI, so it is locked. True count = RC ÷ decks remaining; bets/deviations use `true_count_int()`: the displayed 0.1 value rounded to the nearest whole number, halves away from zero (user's choice; the calculator's TC rows use the same rule). Burns are entered manually via the Burn popup (`ui/burn_popup.py`) because the dealer shows burn cards outside the counting zone: face-down burns only reduce decks remaining / advance penetration; face-up burns are also counted in the RC.
+- `core/strategy.py` reads `strategy/basic_strategy.json` (BJA chart, with the S17 base for A,8 vs 6 = S and 11 vs A = H) and `strategy/deviations.json` (every index in `BJA_S17.pdf`; `0+`/`0−` mean positive/negative **running** count). `advise()` checks surrender first (fallback = the deviation-adjusted hard play), then pairs (Y/N splits with DAS), soft and hard.
+- `core/betting.py`: ramp presets, EV / SD / risk of ruin / N-0 **estimates** from simulated true-count frequencies for the chosen decks/penetration (edge ≈ rules base + 0.5% per TC, fixed variance per hand); not a full hand simulation.
+- `core/config.py` holds paths and tuning constants (default capture region and zone, thresholds, `ENGINE_PRECISION`); `core/settings.py` persists user settings to `settings.json` (git-ignored), including the live `capture_region` (moved with the **Capture area** button / `ui/region_picker.py`; dxcam is restarted on the new region, which works after CUDA init) and `zone` (dragged/resized on the live feed in `ui/main_tab.py` `FeedView`; right-click resets it). The feed's yellow zone is drawn by the UI, not the pipeline.
+- `utilities/rank_verifier.py` (classic CV, not a neural net): find card contour → perspective-warp to a 280×200 **landscape** card → crop the rank from both corners (bottom-right rotated upright, avoiding 6/9 confusion) → 40×48 glyph → normalised cross-correlation against templates. Same-rank glyphs score ≥ 0.87, different ranks ≤ 0.63.
 
 ## Data conventions
 
 - `card_templates/` = verified, labelled cards used as verifier templates. Name: `<RANK>_<suit>_id<N>_<timestamp>.png`; rank is parsed from the first `_` token (`2`–`10`, `J`, `Q`, `K`, `A`).
-- `captured_cards/` = new captures from `main.py`, named `<RANK>_unverified[_yolo<RANK>]_id<N>_<timestamp>.png`. The rank there is only the pipeline's guess (`_yolo<X>` marks a YOLO/verifier disagreement). Any filename containing `unverified` is ignored as a template/label; a human renames it and moves it to `card_templates/`. Templates load only at startup.
+- `captured_cards/` = new captures, named `<RANK>_unverified[_yolo<RANK>]_id<N>_<timestamp>.png`. The rank is only the pipeline's guess (`_yolo<X>` marks a YOLO/verifier disagreement). Filenames containing `unverified` are never used as templates; a human renames and moves them to `card_templates/`. Templates load only at startup.
 - Suits don't matter to the verifier (images are binarized, suit symbol is discarded); 3–5 examples per rank matter.
 
 ## Gotchas
 
-- **dxcam must be created before `ultralytics`/`torch` are imported.** On this Intel+NVIDIA laptop, Desktop Duplication fails (`COMError ... feature level is not supported`) once the process has initialised CUDA. That is why the capture setup sits above the YOLO import in `main.py`.
+- **dxcam must be created before `ultralytics`/`torch` are imported.** On this Intel+NVIDIA laptop, Desktop Duplication fails (`COMError ... feature level is not supported`) once the process has initialised CUDA. `main.py` starts it first; `core/pipeline.py` imports ultralytics lazily inside `load_model()`. Keep torch out of module-level imports anywhere `main.py` imports before the worker starts.
+- **Qt stylesheets override `setFont`:** never put `font-size`/`font-family` in `ui/theme.STYLESHEET`; fonts are set in code via `theme.font()` (pixel sizes, letter spacing).
 - **Do not use `quantize="fp16"` / half precision with the `.pt` model:** on the GTX 1650 Ti it is slower (≈63 ms vs 37 ms per frame).
-- `ENGINE_PRECISION` in `main.py` (`"fp32"` or `"fp16"`) selects `current_models/<model>.<precision>.engine`. It is used only when it exists and is newer than the `.pt`; otherwise `main.py` warns and falls back to the slower `.pt` on CUDA. After changing the `.pt`, rerun `export_tensorrt.py <precision>`: it keeps a new engine only if detections match the `.pt` on every template card, and restores the previous engine otherwise. fp32 matches the `.pt` exactly (full loop ≈31 ms/frame); fp16 is faster (≈25 ms) with confidences up to ~0.04 off. Engine files are GPU/TensorRT-version specific; the `.onnx` files are export by-products.
+- `ENGINE_PRECISION` in `core/config.py` (`"fp32"` or `"fp16"`) selects `current_models/<model>.<precision>.engine`. It is used only when it exists and is newer than the `.pt`; otherwise the app warns and uses the slower `.pt`. After changing the `.pt`, rerun `export_tensorrt.py <precision>`: it keeps a new engine only if detections match the `.pt` on every template card, and restores the previous engine otherwise. fp32 matches the `.pt` exactly; fp16 is faster with confidences up to ~0.04 off. Engine files are GPU/TensorRT-version specific; `.onnx` files are export by-products.
 - PaddleOCR was removed on purpose (1–2.5 s per card on CPU froze the feed, and misread cards). `opencv-python` is the only OpenCV package; installing `opencv-contrib-python` alongside it breaks `cv2`.
-- Startup is ~10 s, mostly `import torch` (~3.7 s, not caused by OneDrive) and the first CUDA call; the 3 s countdown overlaps the warm-up.
-- Code comments in `main.py` are a Tagalog/English mix; match the surrounding style when editing.
+- Model load + warm-up takes ~10 s in the background (the first run after a reboot can take much longer); Start capture is enabled once it is ready. Live loop runs at ~35–43 FPS.

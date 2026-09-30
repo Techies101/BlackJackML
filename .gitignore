@@ -18,6 +18,10 @@ captured_cards/*
 # Personal settings saved by the app (shoe setup, bet calculator, window positions)
 settings.json
 
+# Local screen recordings of the live game (too large for GitHub) and copied logs
+Live Feed.mp4
+logs.txt
+
 # Generated debug output from the experiment scripts
 rank_verifier_results/
 trocr_rank_results/
@@ -36,3 +40,5 @@ BlackJackML screen designs/
 BlackJackML screen designs.zip
 BlackJackML Screens.html
 Sample Expected User Screen.png
+Claude design logo icon set/
+Claude design logo icon set.zip

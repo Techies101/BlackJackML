@@ -98,15 +98,19 @@ def draw_card(frame, box, label, status):
 # ============================================================
 
 class TrackState:
-    """Per-tracker-ID bookkeeping. Kept across "New shoe" so cards still on the table are not recounted."""
+    """Per-tracker-ID bookkeeping. Kept across "New shoe" so cards still on the table are not recounted.
+
+    All timing uses `now`, the capture time of the current frame (set once per frame by the capture loop).
+    """
 
     def __init__(self):
-        self.stable_frames = {}      # track id -> frames seen in the zone, not yet counted
-        self.missed_frames = {}      # track id -> consecutive frames missing from the zone
+        self.now = 0.0
+        self.last_seen = {}          # track id -> time it was last seen in the zone
+        self.settling = {}           # track id -> {"start", "frames", "votes": {class: [conf sum, n]}, "best": (key, verdict, crop)}
         self.counted_ids = set()
         self.counted_class = {}      # track id -> YOLO class when it was counted
         self.counted_signature = {}  # track id -> rank glyphs when it was counted
-        self.changed_frames = {}     # track id -> consecutive frames showing a different card
+        self.changed = {}            # counted track id -> [frames showing a different card, time of the first one]
 
 
 def decide_rank(yolo_rank, yolo_conf, verdict):
@@ -119,11 +123,8 @@ def decide_rank(yolo_rank, yolo_conf, verdict):
     if verifier_rank == yolo_rank:
         return yolo_rank, "YOLO + verifier agree"
 
-    strong = (
-        verdict["agree"]
-        and verdict["score"] >= config.VERIFIER_STRONG_SCORE
-        and verdict["margin"] >= config.VERIFIER_STRONG_MARGIN
-    )
+    # "confident" already means no readable corner disagrees; one corner covered by the dealer's hand is fine
+    strong = verdict["score"] >= config.VERIFIER_STRONG_SCORE and verdict["margin"] >= config.VERIFIER_STRONG_MARGIN
 
     if yolo_conf < config.YOLO_TRUST_CONF or strong:
         return verifier_rank, "decided by VERIFIER"
@@ -147,7 +148,8 @@ def save_capture(binary_card, final_rank, yolo_rank, disputed, track_id):
 
 
 def is_new_card(state, track_id, class_name, clean_frame, box):
-    """True once a counted track ID has clearly shown a different card for NEW_CARD_FRAMES frames."""
+    """For a counted track ID: once it has clearly shown a different card for NEW_CARD_FRAMES frames and
+    NEW_CARD_SECONDS, return the time the change started (the new card's settling starts there). Otherwise None."""
     similarity = None
 
     # Only look closer when YOLO's class changed; the glyph check filters out YOLO flicker
@@ -156,31 +158,33 @@ def is_new_card(state, track_id, class_name, clean_frame, box):
         if signature is not None:
             similarity = signature_similarity(signature, state.counted_signature[track_id])
 
-    if similarity is not None and similarity < config.NEW_CARD_SIMILARITY:
-        state.changed_frames[track_id] = state.changed_frames.get(track_id, 0) + 1
-    else:
-        state.changed_frames[track_id] = 0
+    if similarity is None or similarity >= config.NEW_CARD_SIMILARITY:
+        state.changed.pop(track_id, None)
+        return None
 
-    if state.changed_frames[track_id] < config.NEW_CARD_FRAMES:
-        return False
+    change = state.changed.setdefault(track_id, [0, state.now])
+    change[0] += 1
+    if change[0] < config.NEW_CARD_FRAMES or state.now - change[1] < config.NEW_CARD_SECONDS:
+        return None
 
-    log("SYSTEM", f"ID {track_id} now shows a different card "
-                  f"({state.counted_class[track_id].replace('Card-', '')} -> {class_name.replace('Card-', '')}); "
-                  f"counting it as new")
-    return True
+    # Normal at this table: each card is placed on the same spot and then slid away, so the tracker often
+    # gives the next card the previous card's ID. The new card is counted by the next DECISION line.
+    log("SYSTEM", f"ID {track_id}: new card replaced {state.counted_class[track_id].replace('Card-', '')}")
+    state.changed.pop(track_id, None)
+    return change[1]
 
 
-def forget_missing(state, seen_ids):
-    # A card only loses its progress after missing more than MISS_TOLERANCE frames in a row
-    for track_id in list(state.stable_frames):
-        if track_id in seen_ids:
+def find_predecessor(state, track_id):
+    """The ID that was in the zone moments ago but not in this frame: when frames arrive unevenly the tracker
+    often gives the same card a new ID. A genuinely new card arrives ~1.5 s after the previous one is slid away,
+    so MISS_TOLERANCE_SECONDS (0.35 s) cannot confuse the two."""
+    best = None
+    for tid, seen in state.last_seen.items():
+        if tid == track_id or seen >= state.now:      # seen in this frame: a different card
             continue
-
-        state.missed_frames[track_id] = state.missed_frames.get(track_id, 0) + 1
-
-        if state.missed_frames[track_id] > config.MISS_TOLERANCE:
-            del state.stable_frames[track_id]
-            del state.missed_frames[track_id]
+        if state.now - seen <= config.MISS_TOLERANCE_SECONDS and (best is None or seen > state.last_seen[best]):
+            best = tid
+    return best
 
 
 # ============================================================
@@ -229,21 +233,24 @@ class CaptureWorker(QThread):
 
     # ---------- per-card logic ----------
 
-    def count_card(self, verifier, clean_frame, box, track_id, class_name, conf):
+    def count_card(self, track_id, settling):
+        """Count a settled card from its best frame: the verifier's best read and YOLO's most-voted class."""
         state = self.state
+        # YOLO: the class with the highest total confidence over the settling frames, at its average confidence
+        class_name, (conf_sum, n) = max(settling["votes"].items(), key=lambda kv: kv[1][0])
+        conf = conf_sum / n
+        _, verdict, binary_card = settling["best"]
+
         state.counted_ids.add(track_id)
         state.counted_class[track_id] = class_name
-        state.changed_frames[track_id] = 0
-        state.stable_frames.pop(track_id, None)
-
-        binary_card = crop_and_binarize(clean_frame, box)
+        state.changed.pop(track_id, None)
+        state.settling.pop(track_id, None)
 
         signature = card_signature(binary_card)
         if signature is not None:
             state.counted_signature[track_id] = signature
 
         yolo_rank = class_name.replace("Card-", "").upper()
-        verdict = verifier.read(binary_card)
         final_rank, decided_by = decide_rank(yolo_rank, conf, verdict)
         value = HILO_VALUE.get(final_rank, 0)
 
@@ -263,24 +270,84 @@ class CaptureWorker(QThread):
     def process_card(self, verifier, clean_frame, box, track_id, class_name, conf):
         """Advance one card that is inside the zone. Returns its on-screen status."""
         state = self.state
-        state.missed_frames.pop(track_id, None)
+        start = state.now
 
         if track_id in state.counted_ids:
-            if not is_new_card(state, track_id, class_name, clean_frame, box):
+            state.last_seen[track_id] = state.now
+            change_start = is_new_card(state, track_id, class_name, clean_frame, box)
+            if change_start is None:
                 return "COUNTED"
 
+            # The new card on this reused ID: its settling started when the change was first seen
             state.counted_ids.discard(track_id)
             state.counted_class.pop(track_id, None)
             state.counted_signature.pop(track_id, None)
-            state.changed_frames.pop(track_id, None)
+            state.settling[track_id] = {"start": change_start, "frames": config.NEW_CARD_FRAMES - 1,
+                                        "votes": {}, "best": None}
 
-        state.stable_frames[track_id] = state.stable_frames.get(track_id, 0) + 1
+        elif track_id not in state.settling:
+            # A new ID in the zone: possibly the same card, re-identified by the tracker after a gap
+            previous = find_predecessor(state, track_id)
+            if previous in state.settling:
+                state.settling[track_id] = state.settling.pop(previous)
+                state.last_seen.pop(previous, None)
+            elif previous in state.counted_ids:
+                same = class_name == state.counted_class.get(previous)
+                signature = card_signature(crop_and_binarize(clean_frame, box))
+                if signature is not None and previous in state.counted_signature:
+                    same = signature_similarity(signature, state.counted_signature[previous]) >= config.NEW_CARD_SIMILARITY
+                if same:
+                    # The already-counted card under a new ID: never count it twice
+                    state.counted_ids.add(track_id)
+                    state.counted_class[track_id] = state.counted_class[previous]
+                    if previous in state.counted_signature:
+                        state.counted_signature[track_id] = state.counted_signature[previous]
+                    state.last_seen.pop(previous, None)
+                    state.last_seen[track_id] = state.now
+                    return "COUNTED"
 
-        if state.stable_frames[track_id] < config.REQUIRED_STABLE_FRAMES:
-            return f"STABLE {state.stable_frames[track_id]}/{config.REQUIRED_STABLE_FRAMES}"
+        state.last_seen[track_id] = state.now
+        settling = state.settling.setdefault(track_id, {"start": start, "frames": 0, "votes": {}, "best": None})
+        settling["frames"] += 1
 
-        self.count_card(verifier, clean_frame, box, track_id, class_name, conf)
+        # Every settling frame votes for YOLO's class; the verifier reads frames until it has a very good read
+        # (the dealer's hand often covers a corner in the first frames, so the clearest frame wins)
+        votes = settling["votes"].setdefault(class_name, [0.0, 0])
+        votes[0] += conf
+        votes[1] += 1
+        best = settling["best"]
+        if best is None or not best[0][0] or best[0][1] < config.VERIFIER_ENOUGH_SCORE:
+            crop = crop_and_binarize(clean_frame, box)
+            verdict = verifier.read(crop)
+            key = (verdict["confident"], verdict["score"])
+            if crop is not None and (best is None or key > best[0]):
+                settling["best"] = (key, verdict, crop)
+
+        if settling["frames"] < config.REQUIRED_STABLE_FRAMES:
+            return f"STABLE {settling['frames']}/{config.REQUIRED_STABLE_FRAMES}"
+        if state.now - settling["start"] < config.REQUIRED_STABLE_SECONDS or settling["best"] is None:
+            return "SETTLING"
+
+        self.count_card(track_id, settling)
         return "COUNTED"
+
+    def forget_missing(self, seen_ids):
+        """Settling cards that have left the zone (missing > MISS_TOLERANCE_SECONDS). If one was clearly seen but
+        left before REQUIRED_STABLE_SECONDS (uneven frames can hide most of its ~1 s in the zone), count it now."""
+        state = self.state
+        for track_id in list(state.settling):
+            if track_id in seen_ids or state.now - state.last_seen.get(track_id, state.now) <= config.MISS_TOLERANCE_SECONDS:
+                continue
+            settling = state.settling[track_id]
+            best = settling["best"]
+            votes = settling["votes"]
+            steady_yolo = any(n and total / n >= config.EXIT_MIN_YOLO_CONF for total, n in votes.values())
+            if settling["frames"] >= config.EXIT_MIN_FRAMES and best is not None and (best[1]["confident"] or steady_yolo):
+                self.count_card(track_id, settling)
+            else:
+                del state.settling[track_id]
+        for track_id in [t for t, seen in state.last_seen.items() if state.now - seen > 5.0]:
+            del state.last_seen[track_id]
 
     # ---------- thread ----------
 
@@ -306,6 +373,8 @@ class CaptureWorker(QThread):
             verifier = RankVerifier(config.TEMPLATE_FOLDER)
             log("SYSTEM", f"Rank verifier: {len(verifier.templates)} templates "
                           f"for ranks {', '.join(verifier.known_ranks) or 'none'}")
+            for name, corner in verifier.skipped:
+                log("WARNING", f"Template {name} ({corner.lower()} corner) doesn't look like its rank; skipped")
             if not verifier.templates:
                 log("WARNING", "No labelled cards in card_templates/; using YOLO only.")
 
@@ -324,6 +393,8 @@ class CaptureWorker(QThread):
         self.ready.emit(model_text)
 
         mask_zone, mask = None, None
+        last_frame = None                  # frame-gap tracking: long gaps are when cards get missed
+        stalls, longest, report_at = 0, 0.0, time.monotonic() + config.STALL_REPORT_SECONDS
 
         # mss handles are per thread, so the fallback is opened here
         with (mss.MSS() if self.camera is None else contextlib.nullcontext()) as sct:
@@ -332,6 +403,7 @@ class CaptureWorker(QThread):
                     self._apply_region()
 
                 if not self.capturing:
+                    last_frame = None          # a pause is not a stall
                     time.sleep(0.05)
                     continue
 
@@ -341,6 +413,7 @@ class CaptureWorker(QThread):
 
                 started = time.perf_counter()
                 frame = self.grab_frame(sct)
+                self.state.now = time.monotonic()    # one timestamp for everything in this frame
 
                 if frame is None:
                     continue
@@ -374,7 +447,7 @@ class CaptureWorker(QThread):
                         if self.show_feed:
                             draw_card(frame, box, f"{class_name} {conf:.2f} ID:{track_id}", status)
 
-                forget_missing(self.state, seen_ids)
+                self.forget_missing(seen_ids)
 
                 if self.show_feed:
                     height, width = frame.shape[:2]
@@ -383,6 +456,18 @@ class CaptureWorker(QThread):
 
                 elapsed = time.perf_counter() - started
                 self.fps = 1 / elapsed if self.fps == 0 else 0.9 * self.fps + 0.1 / max(elapsed, 1e-3)
+
+                # A card sits in the zone ~1 s, so gaps of 0.5 s+ between frames risk missing it
+                if last_frame is not None and self.state.now - last_frame > config.STALL_WARN_SECONDS:
+                    stalls += 1
+                    longest = max(longest, self.state.now - last_frame)
+                last_frame = self.state.now
+                if self.state.now >= report_at:
+                    if stalls:
+                        log("WARNING", f"{stalls} frame gap{'s' if stalls > 1 else ''} over "
+                                       f"{config.STALL_WARN_SECONDS} s in the last {config.STALL_REPORT_SECONDS} s "
+                                       f"(longest {longest:.1f} s): the PC is too busy; cards may be missed")
+                    stalls, longest, report_at = 0, 0.0, self.state.now + config.STALL_REPORT_SECONDS
 
     def _apply_region(self):
         self._region_changed = False

@@ -1,4 +1,4 @@
-# Design brief: "BlackJackML" live card-counting desktop app
+# Design brief: "21 Vision: AI Card Counter" live card-counting desktop app
 
 ## What you are designing
 

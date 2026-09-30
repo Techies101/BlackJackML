@@ -1,5 +1,5 @@
 """Reusable widgets styled after the Claude Design components."""
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QDoubleValidator, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
@@ -228,7 +228,7 @@ class Toggle(QWidget):
 
 
 class NumberField(QFrame):
-    """Input box with an optional "$" prefix and a units suffix; emits the parsed number."""
+    """Input box with an optional currency prefix and a units suffix; emits the parsed number."""
 
     valueChanged = Signal(float)
 
@@ -358,7 +358,7 @@ class Pill(QFrame):
 class TitleBar(QFrame):
     """Custom title bar for the frameless, always-on-top windows (drag to move)."""
 
-    def __init__(self, window, title, subtitle="", height=32, show_on_top=True, button_width=46):
+    def __init__(self, window, title, subtitle="", height=32, show_on_top=True, button_width=46, icon=None, icon_size=20):
         super().__init__()
         self._window = window
         self.setObjectName("titlebar")
@@ -367,6 +367,13 @@ class TitleBar(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12 if height > 28 else 10, 0, 0, 0)
         layout.setSpacing(10)
+        if icon is not None:
+            logo = QLabel()
+            logo.setFixedSize(icon_size, icon_size)
+            logo.setPixmap(icon.pixmap(QSize(icon_size, icon_size), window.devicePixelRatioF()))
+            logo.setStyleSheet("background: transparent;")
+            layout.addWidget(logo)
+            layout.addSpacing(-2)
         layout.addWidget(label(title, 13 if height > 28 else 12, 700, spacing=0.02))
         if subtitle:
             layout.addWidget(label(subtitle, 12, 400, t.TEXT_3))

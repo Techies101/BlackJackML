@@ -2,7 +2,7 @@
 import glob
 import os
 
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QFont, QFontDatabase, QIcon
 
 # Surfaces & text
 WINDOW = "#07090C"
@@ -63,9 +63,23 @@ def load_fonts():
         QFontDatabase.addApplicationFont(path)
 
 
+def app_icon():
+    """The 21 Vision icon at every size (Qt picks the closest: simplified "21" up to 32 px, full art above)."""
+    icon = QIcon()
+    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+    for size in (16, 20, 24, 32, 48, 64, 128, 256, 512):
+        icon.addFile(os.path.join(folder, f"21vision-{size}.png"))
+    return icon
+
+
+# The bundled fonts have no peso sign (₱); these Windows fonts supply it (Bahnschrift is DIN-style like Barlow)
+FALLBACK = {UI: "Bahnschrift", CONDENSED: "Bahnschrift", MONO: "Consolas"}
+
+
 def font(size, weight=400, family=UI, spacing=0.0):
     """Font by pixel size and CSS weight; `spacing` is letter spacing in em (0.1 = +10%)."""
     f = QFont(family)
+    f.setFamilies([family, FALLBACK.get(family, "Segoe UI")])
     f.setPixelSize(size)
     f.setWeight(QFont.Weight(weight))
     if spacing:
@@ -82,8 +96,11 @@ def signed(n):
     return f"+{n}" if n > 0 else f"−{abs(n)}" if n < 0 else "0"
 
 
+CURRENCY = "₱"   # Philippine peso
+
+
 def money(n, decimals=0):
-    return f"${n:,.{decimals}f}"
+    return f"{CURRENCY}{n:,.{decimals}f}"
 
 
 STYLESHEET = f"""

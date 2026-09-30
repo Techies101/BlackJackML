@@ -1,4 +1,4 @@
-# BlackJackML dependencies (Python 3.12)
+# 21 Vision: AI Card Counter: dependencies (Python 3.12)
 #
 # Install into the project venv:
 #   venv\Scripts\python -m pip install -r requirements.txt

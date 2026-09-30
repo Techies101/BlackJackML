@@ -23,7 +23,7 @@ class MainWindow(QWidget):
 
     def __init__(self, worker, counter, strategy, settings, logs_window, capture_method):
         super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.setWindowTitle("BlackJackML")
+        self.setWindowTitle("21 Vision: AI Card Counter")
         self.worker, self.counter, self.strategy, self.settings = worker, counter, strategy, settings
         self.logs_window = logs_window
         self.capture_method = capture_method
@@ -42,7 +42,8 @@ class MainWindow(QWidget):
         root.setContentsMargins(1, 1, 1, 1)
         root.setSpacing(0)
 
-        root.addWidget(TitleBar(self, "BlackJackML", "Hi-Lo live counter"))
+        self.setWindowIcon(t.app_icon())
+        root.addWidget(TitleBar(self, "21 Vision: AI Card Counter", icon=t.app_icon()))
         root.addWidget(self._build_tabs())
         root.addWidget(self._build_banner())
 

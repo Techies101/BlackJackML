@@ -1,5 +1,5 @@
 """
-BlackJackML: live Hi-Lo card counter.
+21 Vision: AI Card Counter: live Hi-Lo card counter.
 
 Opens the always-on-top main window (Main · Basic Strategy · Deviations · Bet Spread)
 and the Program Logs window. The capture pipeline runs on a background thread
@@ -57,13 +57,25 @@ def main():
     from ui.main_window import MainWindow
     from ui.widgets import keep_on_screen
 
+    # Own taskbar identity, so Windows shows the 21 Vision icon instead of Python's; and above-normal priority,
+    # so a screen recorder or the browser can't starve the capture loop (stalls made it miss cards)
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("21Vision.AICardCounter")
+        ABOVE_NORMAL_PRIORITY_CLASS = 0x8000
+        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS)
+    except (AttributeError, OSError):
+        pass
+
     app = QApplication(sys.argv)
+    app.setApplicationName("21 Vision: AI Card Counter")
     # Ctrl+C in the terminal closes the app (the 100 ms UI timer lets Python see the signal). Queued, because
     # app.quit() is ignored if Ctrl+C arrives during start-up, before the event loop is running.
     signal.signal(signal.SIGINT, lambda *_: QTimer.singleShot(0, app.quit))
     theme.load_fonts()
     app.setFont(theme.font(13))
     app.setStyleSheet(theme.STYLESHEET)
+    app.setWindowIcon(theme.app_icon())
 
     counter = ShoeCounter()
     worker = CaptureWorker(camera, counter, region, settings["zone"])

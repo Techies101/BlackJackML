@@ -57,7 +57,9 @@ class LogsWindow(QWidget):
         root = QVBoxLayout(frame)
         root.setContentsMargins(1, 1, 1, 1)
         root.setSpacing(0)
-        root.addWidget(TitleBar(self, "Program Logs", height=28, show_on_top=False, button_width=40))
+        self.setWindowIcon(t.app_icon())
+        root.addWidget(TitleBar(self, "Program Logs", height=28, show_on_top=False, button_width=40,
+                                icon=t.app_icon(), icon_size=16))
 
         # Filters · auto-scroll · clear
         bar = QFrame()

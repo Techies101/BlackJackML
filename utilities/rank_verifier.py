@@ -69,6 +69,10 @@ GLYPH_H = 48
 MIN_SCORE = 0.75
 MIN_MARGIN = 0.10
 
+# A template corner must match another card of its own rank at least this well, or it is skipped at load
+# time. Good corners score 0.73+ against their rank; a corner half covered by the dealer's hand ~0.2.
+TEMPLATE_MIN_MATCH = 0.50
+
 
 # ============================================================
 # LABEL FROM FILENAME
@@ -327,6 +331,22 @@ def load_templates(folder):
     return templates
 
 
+def drop_bad_templates(templates):
+    """Skip template corners that don't look like the rest of their rank (e.g. half covered by the dealer's
+    hand). A corner is kept if it matches another card's template of the same rank at TEMPLATE_MIN_MATCH or better;
+    ranks with only one card are kept as they are. Returns (kept, skipped) where skipped = [(card, corner)]."""
+    kept, skipped = [], []
+
+    for rank, name, corner, glyph in templates:
+        others = [t for t in templates if t[0] == rank and t[1] != name]
+        if others and max(glyph_score(glyph, t[3]) for t in others) < TEMPLATE_MIN_MATCH:
+            skipped.append((name, corner))
+        else:
+            kept.append((rank, name, corner, glyph))
+
+    return kept, skipped
+
+
 # ============================================================
 # CARD SIGNATURE (did the card under a tracker ID change?)
 # ============================================================
@@ -370,7 +390,7 @@ class RankVerifier:
 
     def __init__(self, template_folder):
 
-        self.templates = load_templates(template_folder)
+        self.templates, self.skipped = drop_bad_templates(load_templates(template_folder))
 
         self.known_ranks = sorted(
             {t[0] for t in self.templates}, key=VALID_RANKS.index
@@ -385,8 +405,8 @@ class RankVerifier:
             score      match score of that rank (0-1, higher is better)
             margin     lead over the next-best rank
             agree      True if both corners gave the same rank
-            confident  True if score/margin pass MIN_SCORE/MIN_MARGIN and
-                       the corners do not contradict each other
+            confident  True if at least one corner passes MIN_SCORE/MIN_MARGIN and no
+                       other readable corner contradicts it (a covered corner is ignored)
             corners    per-corner (rank, score, margin)
         """
 
@@ -416,14 +436,11 @@ class RankVerifier:
         # Trust the corner with the stronger match
         rank, score, margin = max(corners.values(), key=lambda c: c[1])
 
-        ranks_seen = {c[0] for c in corners.values()}
-        agree = len(corners) == 2 and len(ranks_seen) == 1
-
-        confident = (
-            score >= MIN_SCORE
-            and margin >= MIN_MARGIN
-            and len(ranks_seen) == 1   # one corner only, or both agree
-        )
+        # A corner that matches nothing well is unreadable (e.g. the dealer's hand covers it), not a
+        # contradiction: one clear corner is enough. Two readable corners must agree.
+        readable = {c[0] for c in corners.values() if c[1] >= MIN_SCORE and c[2] >= MIN_MARGIN}
+        agree = len(corners) == 2 and len({c[0] for c in corners.values()}) == 1
+        confident = len(readable) == 1
 
         return {
             "rank": rank, "score": score, "margin": margin,

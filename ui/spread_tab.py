@@ -85,7 +85,7 @@ class RampRow(QFrame):
         idx_box.setLayout(hbox(index, self.live, "stretch", spacing=6))
         layout.addWidget(idx_box)
 
-        self.bet = NumberField(settings["bets"][tc], "$", "", height=28, size=13)
+        self.bet = NumberField(settings["bets"][tc], t.CURRENCY, "", height=28, size=13)
         self.bet.valueChanged.connect(self._bet_changed)
         layout.addWidget(self.bet, 1)
 
@@ -278,7 +278,7 @@ class SpreadTab(QWidget):
         self.mode.changed.connect(lambda v: self._set_calc("mode", v))
         pl.addWidget(self.mode)
 
-        self.bankroll = NumberField(c["bankroll"], "$")
+        self.bankroll = NumberField(c["bankroll"], t.CURRENCY)
         self.bankroll.valueChanged.connect(lambda v: self._set_calc("bankroll", v))
         pl.addLayout(field_block("Available bankroll", self.bankroll))
         self.rph = NumberField(c["rounds_per_hour"])
@@ -291,7 +291,7 @@ class SpreadTab(QWidget):
         self.trip_block.setLayout(field_block("Trip length (hours)", self.trip_hours))
         pl.addWidget(self.trip_block)
 
-        self.unit = NumberField(c["unit"], "$")
+        self.unit = NumberField(c["unit"], t.CURRENCY)
         self.unit.valueChanged.connect(self._set_unit)
         self.units = NumberField(0)
         self.units.valueChanged.connect(lambda v: self._set_calc("bankroll", v * (float(c["unit"]) or 1)))
@@ -534,7 +534,8 @@ class SpreadTab(QWidget):
 
         self.viz_fields = {}
         row = hbox(spacing=10)
-        for key, text, prefix in (("ev", "EV ($/hr)", "$"), ("sd", "Std. deviation", "$"), ("hours", "Hours", ""), ("bank", "Bankroll", "$")):
+        for key, text, prefix in (("ev", f"EV ({t.CURRENCY}/hr)", t.CURRENCY), ("sd", "Std. deviation", t.CURRENCY),
+                                  ("hours", "Hours", ""), ("bank", "Bankroll", t.CURRENCY)):
             field = NumberField(0, prefix, height=32, size=13, decimals=2 if key in ("ev", "sd") else 0)
             field.setFixedWidth(128)
             field.valueChanged.connect(lambda _: self._draw_chart())

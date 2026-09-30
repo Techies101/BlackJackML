@@ -31,16 +31,35 @@ MASK_MARGIN = (2, 3, 2, 1)
 DETECTION_CONF = 0.45
 DETECTION_IOU = 0.45
 
-REQUIRED_STABLE_FRAMES = 5   # frames a card must stay in the zone before it is counted
-MISS_TOLERANCE = 3           # missed frames tolerated before a card's progress resets
+# Counting rules are time-based so they hold at any frame rate. Cards sit in the zone for only ~1 s before
+# the dealer slides them away, and the live FPS drops to 6-12 while the game video plays and the screen is
+# recorded; frame-count rules then missed ~35% of cards (22-minute recording, 2026-09-30).
+REQUIRED_STABLE_SECONDS = 0.4   # a card must be in the zone this long (lets the dealer's hand move off it)...
+REQUIRED_STABLE_FRAMES = 3      # ...and be seen at least this many times. Every settling frame is read; the best is used.
+MISS_TOLERANCE_SECONDS = 0.35   # a card missing from the zone for longer than this loses its settling progress
+# A settling card that leaves before REQUIRED_STABLE_SECONDS is still counted on exit if it was seen at least
+# EXIT_MIN_FRAMES times with a confident verifier read or a steady YOLO class (a card flashing past is ignored)
+EXIT_MIN_FRAMES = 2
+EXIT_MIN_YOLO_CONF = 0.80
 
 # A new card landing on the same spot can inherit an already-counted tracker ID.
 # Such an ID is counted again once YOLO's class AND the rank glyph have both changed
-# for NEW_CARD_FRAMES frames. Measured: same-rank glyphs >= 0.87, different ranks <= 0.63.
+# for NEW_CARD_FRAMES frames and NEW_CARD_SECONDS; those frames already count toward the new card's settling.
+# Measured: same-rank glyphs >= 0.87, different ranks <= 0.63.
 NEW_CARD_SIMILARITY = 0.75
-NEW_CARD_FRAMES = 3
+NEW_CARD_FRAMES = 2
+NEW_CARD_SECONDS = 0.2   # ...and for at least this long: a finger sliding a card away looks "different" for ~0.07 s
+
+# Warn (at most every STALL_REPORT_SECONDS) when frames arrive more than STALL_WARN_SECONDS apart
+STALL_WARN_SECONDS = 0.5
+STALL_REPORT_SECONDS = 10
+
+# Stop re-reading a settling card with the verifier once it has a read this good (saves ~12 ms per frame)
+VERIFIER_ENOUGH_SCORE = 0.90
 
 # The verifier overrules YOLO when YOLO is unsure, or when the verifier is very sure
 YOLO_TRUST_CONF = 0.80
-VERIFIER_STRONG_SCORE = 0.90
+# "Strong" verifier read (overrules even a confident YOLO): score and lead over the next rank. Correct reads
+# score ~0.87-0.97 while a wrong rank has never scored above 0.63; one readable corner is enough.
+VERIFIER_STRONG_SCORE = 0.85
 VERIFIER_STRONG_MARGIN = 0.25
